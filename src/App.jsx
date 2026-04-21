@@ -2,15 +2,15 @@ import { useState, useEffect, useRef } from "react";
 
 // ── Default seed inventory ──────────────────────────────────────────────────
 const SEED_INVENTORY = [
-  { id: "BSA-001",  name: "BSA (Bovine Serum Albumin)", unit: "g",    qty: 500, min: 100, location: "Fridge A-2",  category: "Protein", sequence: "",                purity: "",       qcLink: "" },
-  { id: "PBS-001",  name: "PBS 10x Buffer",              unit: "L",    qty: 12,  min: 4,   location: "Shelf B-1",  category: "Buffer",  sequence: "",                purity: "",       qcLink: "" },
-  { id: "ETH-001",  name: "Ethanol 200 Proof",           unit: "L",    qty: 8,   min: 3,   location: "Flammables", category: "Solvent", sequence: "",                purity: "≥200pf", qcLink: "" },
-  { id: "DMSO-001", name: "DMSO (Dimethyl Sulfoxide)",   unit: "mL",   qty: 250, min: 50,  location: "Shelf C-3",  category: "Solvent", sequence: "",                purity: "≥99.9%", qcLink: "" },
-  { id: "TRIS-001", name: "Tris Base",                   unit: "g",    qty: 300, min: 80,  location: "Shelf B-2",  category: "Buffer",  sequence: "",                purity: "≥99%",   qcLink: "" },
-  { id: "ATP-001",  name: "ATP Disodium Salt",           unit: "mg",   qty: 50,  min: 20,  location: "Freezer-1",  category: "Reagent", sequence: "",                purity: "≥99%",   qcLink: "" },
-  { id: "PCR-001",  name: "Taq Polymerase 5U/µL",        unit: "rxns", qty: 200, min: 50,  location: "Freezer-2",  category: "Enzyme",  sequence: "",                purity: "",       qcLink: "" },
-  { id: "AGR-001",  name: "Agarose LE",                  unit: "g",    qty: 400, min: 100, location: "Shelf D-1",  category: "Reagent", sequence: "",                purity: "",       qcLink: "" },
-  { id: "OLG-AAA",  name: "Oligo AAA",                   unit: "µg",   qty: 250, min: 50,  location: "Freezer-2",  category: "Oligo",   sequence: "AAAAAAAAAA",      purity: "HPLC",   qcLink: "" },
+  { id: "BSA-001",  name: "BSA (Bovine Serum Albumin)", unit: "g",    qty: 500, min: 100, location: "Fridge A-2",  category: "Protein", sequence: "",           purity: "",       qcLink: "", lotNumber: "" },
+  { id: "PBS-001",  name: "PBS 10x Buffer",              unit: "L",    qty: 12,  min: 4,   location: "Shelf B-1",  category: "Buffer",  sequence: "",           purity: "",       qcLink: "", lotNumber: "" },
+  { id: "ETH-001",  name: "Ethanol 200 Proof",           unit: "L",    qty: 8,   min: 3,   location: "Flammables", category: "Solvent", sequence: "",           purity: "≥200pf", qcLink: "", lotNumber: "" },
+  { id: "DMSO-001", name: "DMSO (Dimethyl Sulfoxide)",   unit: "mL",   qty: 250, min: 50,  location: "Shelf C-3",  category: "Solvent", sequence: "",           purity: "≥99.9%", qcLink: "", lotNumber: "" },
+  { id: "TRIS-001", name: "Tris Base",                   unit: "g",    qty: 300, min: 80,  location: "Shelf B-2",  category: "Buffer",  sequence: "",           purity: "≥99%",   qcLink: "", lotNumber: "" },
+  { id: "ATP-001",  name: "ATP Disodium Salt",           unit: "mg",   qty: 50,  min: 20,  location: "Freezer-1",  category: "Reagent", sequence: "",           purity: "≥99%",   qcLink: "", lotNumber: "" },
+  { id: "PCR-001",  name: "Taq Polymerase 5U/µL",        unit: "rxns", qty: 200, min: 50,  location: "Freezer-2",  category: "Enzyme",  sequence: "",           purity: "",       qcLink: "", lotNumber: "" },
+  { id: "AGR-001",  name: "Agarose LE",                  unit: "g",    qty: 400, min: 100, location: "Shelf D-1",  category: "Reagent", sequence: "",           purity: "",       qcLink: "", lotNumber: "" },
+  { id: "OLG-AAA",  name: "Oligo AAA",                   unit: "µg",   qty: 250, min: 50,  location: "Freezer-2",  category: "Oligo",   sequence: "AAAAAAAAAA", purity: "HPLC",   qcLink: "", lotNumber: "" },
 ];
 
 const SYSTEM_PROMPT = `You are LabAgent, an intelligent R&D lab supply assistant. You manage inventory and process supply orders.
@@ -34,7 +34,7 @@ Response schema:
   "action": "ORDER" | "RECEIVE" | "CHECK" | "ADJUST" | "REPORT" | "ADD" | "UPDATE" | "EXPORT" | "CHITCHAT",
   "reply": "friendly human-readable response to the user",
   "updates": [{ "id": "item-id", "delta": number, "note": "string" }],
-  "textUpdates": [{ "id": "item-id", "field": "sequence"|"purity"|"qcLink"|"location"|"name"|"category"|"min", "value": "new value" }],
+  "textUpdates": [{ "id": "item-id", "field": "sequence"|"purity"|"qcLink"|"location"|"name"|"category"|"min"|"lotNumber", "value": "new value" }],
   "newItems": [{ "id": "SUGGESTED-ID", "name": "string", "unit": "string", "qty": number, "min": number, "location": "string", "category": "string", "sequence": "", "purity": "", "qcLink": "" }],
   "flags": ["low-stock: item name", ...],
   "highlight": "item-id or null"
@@ -46,8 +46,9 @@ Rules:
 - If item not found, suggest closest match.
 - For REPORT action, summarize in the reply field.
 - Partial matches are fine (e.g. "BSA" matches "BSA (Bovine Serum Albumin)").
-- For UPDATE action, use textUpdates to change sequence, purity, qcLink, location, name, category, or min threshold.
-- For ADD action, use newItems array with all provided fields. Generate a sensible ID like "BSA-002" or "OLG-XYZ".
+- For UPDATE action, use textUpdates to change sequence, purity, qcLink, location, name, category, min threshold, or lotNumber.
+  - For ADD action, use newItems array with all provided fields. Generate a sensible ID like "BSA-002" or "OLG-XYZ".
+  "newItems": [{ "id": "SUGGESTED-ID", "name": "string", "unit": "string", "qty": number, "min": number, "location": "string", "category": "string", "sequence": "", "purity": "", "qcLink": "", "lotNumber": "" }],
 - updates, textUpdates, and newItems can all be used together in the same response if needed.`;
 
 // ── Storage helpers (localStorage — used for messages and orders only) ───────
@@ -146,7 +147,7 @@ export default function LabSupplyAgent() {
   const [orderSubmitting, setOrderSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(null);
   const [showAddItem, setShowAddItem] = useState(false);
-  const [addItemForm, setAddItemForm] = useState({ id: "", name: "", unit: "", qty: "", min: "", location: "", category: "", sequence: "", purity: "", qcLink: "" });
+  const [addItemForm, setAddItemForm] = useState({ id: "", name: "", unit: "", qty: "", min: "", location: "", category: "", sequence: "", purity: "", lotNumber: "", qcLink: "" });
   const [invLoading, setInvLoading] = useState(true);
   const chatEndRef = useRef(null);
 
@@ -296,10 +297,10 @@ export default function LabSupplyAgent() {
   const exportToExcel = () => {
     // Build CSV-style data then trigger download as .csv (works everywhere without a library)
     // For true .xlsx we use the SheetJS approach via a script tag trick
-    const headers = ["ID", "Name", "Category", "Qty", "Unit", "Min", "Location", "Sequence", "Purity", "QC Link", "Status"];
+    const headers = ["ID", "Name", "Category", "Qty", "Unit", "Min", "Location", "Lot Number", "Sequence", "Purity", "QC Link", "Status"];
     const rows = inventory.map(i => [
       i.id, i.name, i.category, i.qty, i.unit, i.min, i.location,
-      i.sequence || "", i.purity || "", i.qcLink || "",
+      i.lotNumber || "", i.sequence || "", i.purity || "", i.qcLink || "",
       i.qty <= i.min * 0.5 ? "CRITICAL" : i.qty <= i.min ? "LOW" : "OK"
     ]);
 
@@ -322,7 +323,7 @@ export default function LabSupplyAgent() {
     if (inventory.find(i => i.id === id)) { alert(`ID "${id}" already exists.`); return; }
     const newItem = { ...addItemForm, qty: parseFloat(qty), min: parseFloat(min) || 0 };
     saveInventory([...inventory, newItem]);
-    setAddItemForm({ id: "", name: "", unit: "", qty: "", min: "", location: "", category: "", sequence: "", purity: "", qcLink: "" });
+    setAddItemForm({ id: "", name: "", unit: "", qty: "", min: "", location: "", category: "", sequence: "", purity: "", lotNumber: "", qcLink: "" });
     setShowAddItem(false);
   };
 
@@ -699,6 +700,7 @@ export default function LabSupplyAgent() {
                   { key: "category", label: "CATEGORY *", placeholder: "Oligo" },
                   { key: "sequence", label: "SEQUENCE", placeholder: "ATCGATCG..." },
                   { key: "purity", label: "PURITY", placeholder: "HPLC" },
+                  { key: "lotNumber", label: "LOT #", placeholder: "LOT-2024-001" },
                   { key: "qcLink", label: "QC LINK", placeholder: "https://..." },
                 ].map(({ key, label, placeholder, type }) => (
                   <div key={key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -739,7 +741,7 @@ export default function LabSupplyAgent() {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid #1e2a45", color: "#3a4d6a", letterSpacing: "0.1em" }}>
-                    {["ID", "NAME", "CATEGORY", "QTY", "MIN", "LOCATION", "SEQUENCE", "PURITY", "QC", "STATUS"].map(h => (
+                    {["ID", "NAME", "CATEGORY", "QTY", "MIN", "LOCATION", "LOT #", "SEQUENCE", "PURITY", "QC", "STATUS"].map(h => (
                       <th key={h} style={{ padding: "8px 12px", textAlign: "left", fontWeight: 600 }}>{h}</th>
                     ))}
                   </tr>
@@ -768,6 +770,9 @@ export default function LabSupplyAgent() {
                         </td>
                         <td style={{ padding: "9px 12px", color: "#3a4d6a" }}>{item.min} {item.unit}</td>
                         <td style={{ padding: "9px 12px", color: "#4a5878" }}>{item.location}</td>
+                        <td style={{ padding: "9px 12px", color: "#6b7fa8", fontSize: 10 }}>
+                          {item.lotNumber || <span style={{ color: "#2a3a5c" }}>—</span>}
+                        </td>
                         <td style={{ padding: "9px 12px", color: "#6b7fa8", fontFamily: "monospace", fontSize: 10, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {item.sequence || <span style={{ color: "#2a3a5c" }}>—</span>}
                         </td>
