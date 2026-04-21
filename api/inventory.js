@@ -20,7 +20,13 @@ async function kvGet(key) {
     headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` },
   });
   const data = await res.json();
-  return data.result ?? null;
+  const result = data.result ?? null;
+  if (result === null) return null;
+  // Upstash may return a string or already-parsed value
+  if (typeof result === "string") {
+    try { return JSON.parse(result); } catch { return result; }
+  }
+  return result;
 }
 
 async function kvSet(key, value) {
@@ -45,11 +51,10 @@ module.exports = async function handler(req, res) {
   if (req.method === "GET") {
     try {
       const stored = await kvGet("lab-inventory");
-      if (stored) {
-        const inv = typeof stored === "string" ? JSON.parse(stored) : stored;
-        return res.status(200).json({ inventory: inv });
+      if (stored && Array.isArray(stored) && stored.length > 0) {
+        return res.status(200).json({ inventory: stored });
       } else {
-        // First time — seed it
+        // First time or empty — seed it
         await kvSet("lab-inventory", JSON.stringify(SEED_INVENTORY));
         return res.status(200).json({ inventory: SEED_INVENTORY });
       }
