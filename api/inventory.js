@@ -33,13 +33,15 @@ async function kvGet(key) {
 }
 
 async function kvSet(key, value) {
+  const serialized = JSON.stringify(value);
+  // Upstash REST API: POST /set/key with the value as a plain text body
   await fetch(`${process.env.KV_REST_API_URL}/set/${key}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}`,
-      "Content-Type": "application/json",
+      "Content-Type": "text/plain",
     },
-    body: JSON.stringify({ value: JSON.stringify(value) }),
+    body: serialized,
   });
 }
 
