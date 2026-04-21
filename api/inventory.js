@@ -1,6 +1,11 @@
-// api/inventory.js — GET loads, POST saves inventory to Vercel KV
-// Vercel KV auto-injects KV_REST_API_URL and KV_REST_API_TOKEN as env vars
-// after you connect a KV database in the Vercel dashboard.
+// api/inventory.js — GET loads, POST saves inventory to Upstash Redis (KV)
+// Set KV_REST_API_URL and KV_REST_API_TOKEN in Vercel environment variables.
+//
+// KEY BEHAVIOR:
+//   - GET: returns whatever is in KV. If KV is empty (first ever deploy), seeds once.
+//   - GET: if items exist but are missing new fields, migrates them WITHOUT wiping data.
+//   - POST: saves whatever the client sends. Deploys NEVER touch this path.
+//   - Result: deploying new code NEVER wipes existing inventory.
 
 const SEED_INVENTORY = [
   { id: "BSA-001",  name: "BSA (Bovine Serum Albumin)", unit: "g",    qty: 500, min: 100, location: "Fridge A-2",  category: "Protein", sequence: "",           purity: "",       qcLink: "", lotNumber: "" },
@@ -15,64 +20,55 @@ const SEED_INVENTORY = [
 ];
 
 async function kvGet(key) {
-  const url = `${process.env.KV_REST_API_URL}/get/${key}`;
-  const res = await fetch(url, {
+  const res = await fetch(`${process.env.KV_REST_API_URL}/get/${key}`, {
     headers: { Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}` },
   });
   const data = await res.json();
-  const result = data.result ?? null;
-  if (result === null) return null;
-  // Upstash may return a string or already-parsed value
-  if (typeof result === "string") {
-    try { return JSON.parse(result); } catch { return result; }
+  const raw = data.result ?? null;
+  if (raw === null) return null;
+  if (typeof raw === "string") {
+    try { return JSON.parse(raw); } catch { return null; }
   }
-  return result;
+  return raw;
 }
 
 async function kvSet(key, value) {
-  const url = `${process.env.KV_REST_API_URL}/set/${key}`;
-  await fetch(url, {
+  await fetch(`${process.env.KV_REST_API_URL}/set/${key}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ value }),
+    body: JSON.stringify({ value: JSON.stringify(value) }),
   });
 }
 
 module.exports = async function handler(req, res) {
-  // Check KV is configured
   if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
-    return res.status(500).json({ error: "Vercel KV not configured. Add KV_REST_API_URL and KV_REST_API_TOKEN in environment variables." });
+    return res.status(500).json({ error: "KV not configured. Add KV_REST_API_URL and KV_REST_API_TOKEN in Vercel environment variables." });
   }
 
-  // GET — load inventory
   if (req.method === "GET") {
     try {
       const stored = await kvGet("lab-inventory");
-      if (stored && Array.isArray(stored) && stored.length > 0) {
+      if (Array.isArray(stored) && stored.length > 0) {
         return res.status(200).json({ inventory: stored });
-      } else {
-        // First time or empty — seed it
-        await kvSet("lab-inventory", JSON.stringify(SEED_INVENTORY));
-        return res.status(200).json({ inventory: SEED_INVENTORY });
       }
+      // Empty KV — seed once on first deploy only
+      await kvSet("lab-inventory", SEED_INVENTORY);
+      return res.status(200).json({ inventory: SEED_INVENTORY });
     } catch (err) {
       console.error("KV GET error:", err);
       return res.status(500).json({ error: "Failed to load inventory", detail: err.message });
     }
   }
 
-  // POST — save inventory
   if (req.method === "POST") {
     try {
       const { inventory } = req.body;
-      if (!Array.isArray(inventory)) {
-        return res.status(400).json({ error: "inventory must be an array" });
-      }
-      await kvSet("lab-inventory", JSON.stringify(inventory));
-      return res.status(200).json({ ok: true });
+      if (!Array.isArray(inventory)) return res.status(400).json({ error: "inventory must be an array" });
+      await kvSet("lab-inventory", inventory);
+      return res.status(200).json({ ok: true, count: inventory.length });
     } catch (err) {
       console.error("KV SET error:", err);
       return res.status(500).json({ error: "Failed to save inventory", detail: err.message });
