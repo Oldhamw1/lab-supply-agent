@@ -185,10 +185,16 @@ export default function LabSupplyAgent() {
   }, [messages]);
 
   const saveInventory = (inv) => {
+    setInventory(inv);
     if (!invReady.current) {
-      console.warn("saveInventory blocked: inventory not yet loaded from KV");
+      console.warn("saveInventory: KV write skipped, inventory not yet confirmed loaded");
       return;
     }
+    persistInventory(inv).catch(err => console.error("Failed to save inventory:", err));
+  };
+
+  // Direct KV write — bypasses invReady guard, use for explicit user actions
+  const saveInventoryNow = (inv) => {
     setInventory(inv);
     persistInventory(inv).catch(err => console.error("Failed to save inventory:", err));
   };
@@ -247,7 +253,7 @@ export default function LabSupplyAgent() {
       }
 
       if (result.updates?.length || result.textUpdates?.length || result.newItems?.length) {
-        saveInventory(newInv);
+        saveInventoryNow(newInv);
       }
 
       if (result.highlight) {
@@ -283,7 +289,7 @@ export default function LabSupplyAgent() {
           if (upd) return { ...itm, qty: Math.max(0, itm.qty + upd.delta) };
           return itm;
         });
-        saveInventory(newInv);
+        saveInventoryNow(newInv);
       }
       const newOrder = {
         id: `ORD-${Date.now()}`,
@@ -334,7 +340,7 @@ export default function LabSupplyAgent() {
     if (!id || !name || !unit || !qty || !location || !category) return;
     if (inventory.find(i => i.id === id)) { alert(`ID "${id}" already exists.`); return; }
     const newItem = { ...addItemForm, qty: parseFloat(qty), min: parseFloat(min) || 0 };
-    saveInventory([...inventory, newItem]);
+    saveInventoryNow([...inventory, newItem]);
     setAddItemForm({ id: "", name: "", unit: "", qty: "", min: "", location: "", category: "", sequence: "", purity: "", lotNumber: "", qcLink: "" });
     setShowAddItem(false);
   };
