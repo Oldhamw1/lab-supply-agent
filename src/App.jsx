@@ -2,15 +2,15 @@ import { useState, useEffect, useRef } from "react";
 
 // ── Default seed inventory ──────────────────────────────────────────────────
 const SEED_INVENTORY = [
-  { id: "BSA-001",  name: "BSA (Bovine Serum Albumin)", unit: "g",    qty: 500, min: 100, location: "Fridge A-2",  category: "Protein" },
-  { id: "PBS-001",  name: "PBS 10x Buffer",              unit: "L",    qty: 12,  min: 4,   location: "Shelf B-1",  category: "Buffer"   },
-  { id: "ETH-001",  name: "Ethanol 200 Proof",           unit: "L",    qty: 8,   min: 3,   location: "Flammables", category: "Solvent"  },
-  { id: "DMSO-001", name: "DMSO (Dimethyl Sulfoxide)",   unit: "mL",   qty: 250, min: 50,  location: "Shelf C-3",  category: "Solvent"  },
-  { id: "TRIS-001", name: "Tris Base",                   unit: "g",    qty: 300, min: 80,  location: "Shelf B-2",  category: "Buffer"   },
-  { id: "ATP-001",  name: "ATP Disodium Salt",           unit: "mg",   qty: 50,  min: 20,  location: "Freezer-1",  category: "Reagent"  },
-  { id: "PCR-001",  name: "Taq Polymerase 5U/µL",        unit: "rxns", qty: 200, min: 50,  location: "Freezer-2",  category: "Enzyme"   },
-  { id: "AGR-001",  name: "Agarose LE",                  unit: "g",    qty: 400, min: 100, location: "Shelf D-1",  category: "Reagent"  },
-  { id: "OLG-AAA",  name: "Oligo AAA",                   unit: "µg",   qty: 250, min: 50,  location: "Freezer-2",  category: "Oligo"    },
+  { id: "BSA-001",  name: "BSA (Bovine Serum Albumin)", unit: "g",    qty: 500, min: 100, location: "Fridge A-2",  category: "Protein", sequence: "",                purity: "",       qcLink: "" },
+  { id: "PBS-001",  name: "PBS 10x Buffer",              unit: "L",    qty: 12,  min: 4,   location: "Shelf B-1",  category: "Buffer",  sequence: "",                purity: "",       qcLink: "" },
+  { id: "ETH-001",  name: "Ethanol 200 Proof",           unit: "L",    qty: 8,   min: 3,   location: "Flammables", category: "Solvent", sequence: "",                purity: "≥200pf", qcLink: "" },
+  { id: "DMSO-001", name: "DMSO (Dimethyl Sulfoxide)",   unit: "mL",   qty: 250, min: 50,  location: "Shelf C-3",  category: "Solvent", sequence: "",                purity: "≥99.9%", qcLink: "" },
+  { id: "TRIS-001", name: "Tris Base",                   unit: "g",    qty: 300, min: 80,  location: "Shelf B-2",  category: "Buffer",  sequence: "",                purity: "≥99%",   qcLink: "" },
+  { id: "ATP-001",  name: "ATP Disodium Salt",           unit: "mg",   qty: 50,  min: 20,  location: "Freezer-1",  category: "Reagent", sequence: "",                purity: "≥99%",   qcLink: "" },
+  { id: "PCR-001",  name: "Taq Polymerase 5U/µL",        unit: "rxns", qty: 200, min: 50,  location: "Freezer-2",  category: "Enzyme",  sequence: "",                purity: "",       qcLink: "" },
+  { id: "AGR-001",  name: "Agarose LE",                  unit: "g",    qty: 400, min: 100, location: "Shelf D-1",  category: "Reagent", sequence: "",                purity: "",       qcLink: "" },
+  { id: "OLG-AAA",  name: "Oligo AAA",                   unit: "µg",   qty: 250, min: 50,  location: "Freezer-2",  category: "Oligo",   sequence: "AAAAAAAAAA",      purity: "HPLC",   qcLink: "" },
 ];
 
 const SYSTEM_PROMPT = `You are LabAgent, an intelligent R&D lab supply assistant. You manage inventory and process supply orders.
@@ -40,7 +40,8 @@ Rules:
 - If an order would deplete stock below minimum, warn the user.
 - If item not found, suggest closest match.
 - For REPORT action, summarize in the reply field.
-- Partial matches are fine (e.g. "BSA" matches "BSA (Bovine Serum Albumin)").`;
+- Partial matches are fine (e.g. "BSA" matches "BSA (Bovine Serum Albumin)").
+- Items may have optional fields: sequence (nucleotide sequence), purity (e.g. HPLC, ≥99%), and qcLink (URL to QC data). Reference these when relevant to a query.`;
 
 // ── Storage helpers (localStorage) ──────────────────────────────────────────
 const storage = {
@@ -67,7 +68,7 @@ async function callAgent(userMessage, inventory) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "claude-sonnet-4-5",
+      model: "claude-sonnet-4-20250514",
       max_tokens: 1000,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: prompt }],
@@ -562,7 +563,7 @@ export default function LabSupplyAgent() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid #1e2a45", color: "#3a4d6a", letterSpacing: "0.1em" }}>
-                    {["ID", "NAME", "CATEGORY", "QTY", "MIN", "LOCATION", "STATUS"].map(h => (
+                    {["ID", "NAME", "CATEGORY", "QTY", "MIN", "LOCATION", "SEQUENCE", "PURITY", "QC", "STATUS"].map(h => (
                       <th key={h} style={{ padding: "8px 12px", textAlign: "left", fontWeight: 600 }}>{h}</th>
                     ))}
                   </tr>
@@ -591,6 +592,18 @@ export default function LabSupplyAgent() {
                         </td>
                         <td style={{ padding: "9px 12px", color: "#3a4d6a" }}>{item.min} {item.unit}</td>
                         <td style={{ padding: "9px 12px", color: "#4a5878" }}>{item.location}</td>
+                        <td style={{ padding: "9px 12px", color: "#6b7fa8", fontFamily: "monospace", fontSize: 10, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {item.sequence || <span style={{ color: "#2a3a5c" }}>—</span>}
+                        </td>
+                        <td style={{ padding: "9px 12px", color: "#6b7fa8", fontSize: 10 }}>
+                          {item.purity || <span style={{ color: "#2a3a5c" }}>—</span>}
+                        </td>
+                        <td style={{ padding: "9px 12px", fontSize: 10 }}>
+                          {item.qcLink
+                            ? <a href={item.qcLink} target="_blank" rel="noreferrer" style={{ color: "#38bdf8", textDecoration: "none" }}>↗ View</a>
+                            : <span style={{ color: "#2a3a5c" }}>—</span>
+                          }
+                        </td>
                         <td style={{ padding: "9px 12px" }}>
                           <span style={{
                             fontSize: 9, padding: "3px 8px", borderRadius: 3, fontWeight: 700, letterSpacing: "0.08em",
