@@ -50,7 +50,7 @@ Rules:
 - For ADD action, use newItems array with all provided fields. Generate a sensible ID like "BSA-002" or "OLG-XYZ".
 - updates, textUpdates, and newItems can all be used together in the same response if needed.`;
 
-// ── Storage helpers (localStorage) ──────────────────────────────────────────
+// ── Storage helpers (localStorage — used for messages and orders only) ───────
 const storage = {
   get: (key) => {
     try {
@@ -62,6 +62,21 @@ const storage = {
     try { localStorage.setItem(key, value); } catch {}
   },
 };
+
+// ── Inventory API (Vercel KV — shared across all devices) ────────────────────
+async function fetchInventory() {
+  const res = await fetch("/api/inventory");
+  const data = await res.json();
+  return data.inventory || [];
+}
+
+async function persistInventory(inv) {
+  await fetch("/api/inventory", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ inventory: inv }),
+  });
+}
 
 // ── API call (proxied through /api/agent) ────────────────────────────────────
 async function callAgent(userMessage, inventory) {
@@ -106,17 +121,21 @@ export default function LabSupplyAgent() {
   const [orderSuccess, setOrderSuccess] = useState(null);
   const [showAddItem, setShowAddItem] = useState(false);
   const [addItemForm, setAddItemForm] = useState({ id: "", name: "", unit: "", qty: "", min: "", location: "", category: "", sequence: "", purity: "", qcLink: "" });
+  const [invLoading, setInvLoading] = useState(true);
   const chatEndRef = useRef(null);
 
-  // Load or seed from localStorage
+  // Load inventory from KV (shared), messages/orders from localStorage (per-user)
   useEffect(() => {
-    const stored = storage.get("lab-inventory");
-    if (stored?.value) {
-      setInventory(JSON.parse(stored.value));
-    } else {
-      setInventory(SEED_INVENTORY);
-      storage.set("lab-inventory", JSON.stringify(SEED_INVENTORY));
-    }
+    (async () => {
+      try {
+        const inv = await fetchInventory();
+        setInventory(inv);
+      } catch {
+        setInventory(SEED_INVENTORY);
+      } finally {
+        setInvLoading(false);
+      }
+    })();
     const msgs = storage.get("lab-messages");
     if (msgs?.value) setMessages(JSON.parse(msgs.value));
     const ords = storage.get("lab-orders");
@@ -129,7 +148,7 @@ export default function LabSupplyAgent() {
 
   const saveInventory = (inv) => {
     setInventory(inv);
-    storage.set("lab-inventory", JSON.stringify(inv));
+    persistInventory(inv).catch(err => console.error("Failed to save inventory:", err));
   };
 
   const saveMessages = (msgs) => {
@@ -683,7 +702,12 @@ export default function LabSupplyAgent() {
             )}
 
             <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+              {invLoading ? (
+                <div style={{ textAlign: "center", color: "#4a5878", padding: "60px 0", fontSize: 11 }}>
+                  <div style={{ animation: "pulse 1.2s infinite" }}>Loading inventory...</div>
+                </div>
+              ) : (
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid #1e2a45", color: "#3a4d6a", letterSpacing: "0.1em" }}>
                     {["ID", "NAME", "CATEGORY", "QTY", "MIN", "LOCATION", "SEQUENCE", "PURITY", "QC", "STATUS"].map(h => (
@@ -742,6 +766,7 @@ export default function LabSupplyAgent() {
                   })}
                 </tbody>
               </table>
+              )}
             </div>
 
             {lowStock.length > 0 && (
