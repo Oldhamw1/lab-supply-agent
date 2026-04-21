@@ -156,10 +156,12 @@ export default function LabSupplyAgent() {
     (async () => {
       try {
         const inv = await fetchInventory();
-        setInventory(Array.isArray(inv) && inv.length > 0 ? inv : SEED_INVENTORY);
+        // Use whatever KV returns — even if empty, never fall back to seed
+        // (seed only happens server-side in api/inventory.js on first deploy)
+        setInventory(Array.isArray(inv) ? inv : []);
       } catch (err) {
-        console.warn("KV unavailable, falling back to seed inventory:", err);
-        setInventory(SEED_INVENTORY);
+        console.warn("Could not load inventory from KV:", err);
+        setInventory([]);
       } finally {
         setInvLoading(false);
       }
