@@ -79,6 +79,11 @@ async function fetchInventory() {
 }
 
 async function persistInventory(inv) {
+  // Never write an empty inventory to KV — protects against race conditions on load
+  if (!Array.isArray(inv) || inv.length === 0) {
+    console.warn("persistInventory blocked: refusing to save empty inventory");
+    return;
+  }
   await fetch("/api/inventory", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -149,6 +154,7 @@ export default function LabSupplyAgent() {
   const [showAddItem, setShowAddItem] = useState(false);
   const [addItemForm, setAddItemForm] = useState({ id: "", name: "", unit: "", qty: "", min: "", location: "", category: "", sequence: "", purity: "", lotNumber: "", qcLink: "" });
   const [invLoading, setInvLoading] = useState(true);
+  const invReady = useRef(false); // true only after KV load succeeds
   const chatEndRef = useRef(null);
 
   // Load inventory from KV (shared), messages/orders from localStorage (per-user)
@@ -156,12 +162,12 @@ export default function LabSupplyAgent() {
     (async () => {
       try {
         const inv = await fetchInventory();
-        // Use whatever KV returns — even if empty, never fall back to seed
-        // (seed only happens server-side in api/inventory.js on first deploy)
         setInventory(Array.isArray(inv) ? inv : []);
+        invReady.current = true; // unlock saves only after confirmed load
       } catch (err) {
         console.warn("Could not load inventory from KV:", err);
         setInventory([]);
+        // Don't set invReady — saves remain blocked if load failed
       } finally {
         setInvLoading(false);
       }
@@ -179,6 +185,10 @@ export default function LabSupplyAgent() {
   }, [messages]);
 
   const saveInventory = (inv) => {
+    if (!invReady.current) {
+      console.warn("saveInventory blocked: inventory not yet loaded from KV");
+      return;
+    }
     setInventory(inv);
     persistInventory(inv).catch(err => console.error("Failed to save inventory:", err));
   };
