@@ -63,11 +63,18 @@ const storage = {
   },
 };
 
-// ── Inventory API (Vercel KV — shared across all devices) ────────────────────
+// ── Inventory API (Vercel KV / Upstash — shared across all devices) ──────────
 async function fetchInventory() {
   const res = await fetch("/api/inventory");
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
-  return data.inventory || [];
+  // Unwrap various possible shapes
+  const inv = data.inventory ?? data.result ?? data;
+  if (Array.isArray(inv)) return inv;
+  if (typeof inv === "string") {
+    try { const parsed = JSON.parse(inv); if (Array.isArray(parsed)) return parsed; } catch {}
+  }
+  return [];
 }
 
 async function persistInventory(inv) {
@@ -106,7 +113,26 @@ async function callAgent(userMessage, inventory) {
   }
 }
 
+// ── Error Boundary ───────────────────────────────────────────────────────────
+import { Component } from "react";
+class ErrorBoundary extends Component {
+  state = { error: null };
+  static getDerivedStateFromError(error) { return { error }; }
+  render() {
+    if (this.state.error) return (
+      <div style={{ fontFamily: "monospace", background: "#0a0e1a", minHeight: "100vh", color: "#ef4444", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
+        <div style={{ fontSize: 24 }}>⚠</div>
+        <div style={{ fontSize: 13 }}>App error — check console</div>
+        <div style={{ fontSize: 10, color: "#4a5878", maxWidth: 400, textAlign: "center" }}>{this.state.error.message}</div>
+        <button onClick={() => window.location.reload()} style={{ marginTop: 8, background: "#1d4ed8", border: "none", borderRadius: 4, padding: "8px 16px", color: "#fff", cursor: "pointer", fontFamily: "inherit", fontSize: 11 }}>Reload</button>
+      </div>
+    );
+    return this.props.children;
+  }
+}
+
 // ── Main Component ───────────────────────────────────────────────────────────
+export { ErrorBoundary };
 export default function LabSupplyAgent() {
   const [inventory, setInventory] = useState([]);
   const [messages, setMessages] = useState([]);
@@ -129,17 +155,20 @@ export default function LabSupplyAgent() {
     (async () => {
       try {
         const inv = await fetchInventory();
-        setInventory(inv);
-      } catch {
+        setInventory(Array.isArray(inv) && inv.length > 0 ? inv : SEED_INVENTORY);
+      } catch (err) {
+        console.warn("KV unavailable, falling back to seed inventory:", err);
         setInventory(SEED_INVENTORY);
       } finally {
         setInvLoading(false);
       }
     })();
-    const msgs = storage.get("lab-messages");
-    if (msgs?.value) setMessages(JSON.parse(msgs.value));
-    const ords = storage.get("lab-orders");
-    if (ords?.value) setOrders(JSON.parse(ords.value));
+    try {
+      const msgs = storage.get("lab-messages");
+      if (msgs?.value) setMessages(JSON.parse(msgs.value));
+      const ords = storage.get("lab-orders");
+      if (ords?.value) setOrders(JSON.parse(ords.value));
+    } catch {}
   }, []);
 
   useEffect(() => {
